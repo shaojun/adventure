@@ -1,0 +1,1295 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>虚拟人生 - 模拟社交游戏</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css" rel="stylesheet">
+    <script>
+        // Tailwind配置
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#4F46E5', // 主色调：深紫色，代表虚拟与神秘
+                        secondary: '#10B981', // 辅助色：绿色，代表生命与活力
+                        accent: '#F59E0B', // 强调色：橙色，代表活力与社交
+                        dark: '#1E293B',
+                        light: '#F8FAFC'
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                    },
+                    animation: {
+                        'float': 'float 3s ease-in-out infinite',
+                        'pulse-slow': 'pulse 4s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+                    },
+                    keyframes: {
+                        float: {
+                            '0%, 100%': { transform: 'translateY(0)' },
+                            '50%': { transform: 'translateY(-10px)' },
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style type="text/tailwindcss">
+        @layer utilities {
+            .content-auto {
+                content-visibility: auto;
+            }
+            .text-shadow {
+                text-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            }
+            .text-shadow-lg {
+                text-shadow: 0 4px 8px rgba(0,0,0,0.12), 0 2px 4px rgba(0,0,0,0.08);
+            }
+            .animate-path {
+                stroke-dasharray: 10;
+                animation: dash 20s linear infinite;
+            }
+            @keyframes dash {
+                to {
+                    stroke-dashoffset: 1000;
+                }
+            }
+            .avatar-pulse {
+                position: relative;
+            }
+            .avatar-pulse::after {
+                content: '';
+                position: absolute;
+                top: -2px;
+                left: -2px;
+                right: -2px;
+                bottom: -2px;
+                border-radius: 50%;
+                border: 2px solid rgba(16, 185, 129, 0.5);
+                animation: pulse-ring 2s cubic-bezier(0.215, 0.61, 0.355, 1) infinite;
+            }
+            @keyframes pulse-ring {
+                0% { transform: scale(0.95); opacity: 1; }
+                70% { transform: scale(1.2); opacity: 0; }
+                100% { transform: scale(0.95); opacity: 0; }
+            }
+            .chat-bubble-left::before {
+                content: '';
+                position: absolute;
+                left: -8px;
+                top: 10px;
+                width: 0;
+                height: 0;
+                border-top: 8px solid transparent;
+                border-right: 8px solid theme('colors.light');
+                border-bottom: 8px solid transparent;
+            }
+            .chat-bubble-right::before {
+                content: '';
+                position: absolute;
+                right: -8px;
+                top: 10px;
+                width: 0;
+                height: 0;
+                border-top: 8px solid transparent;
+                border-left: 8px solid theme('colors.primary/10');
+                border-bottom: 8px solid transparent;
+            }
+        }
+    </style>
+</head>
+<body class="bg-gradient-to-br from-slate-50 to-slate-100 min-h-screen font-sans text-dark overflow-x-hidden">
+    <!-- 页面加载动画 -->
+    <div id="loader" class="fixed inset-0 z-50 flex items-center justify-center bg-white">
+        <div class="flex flex-col items-center">
+            <div class="w-16 h-16 border-4 border-primary border-t-transparent rounded-full animate-spin mb-4"></div>
+            <p class="text-primary font-medium">载入虚拟世界中...</p>
+        </div>
+    </div>
+
+    <!-- 主容器 -->
+    <div id="app" class="hidden relative">
+        <!-- 顶部导航栏 -->
+        <header class="bg-white/80 backdrop-blur-md shadow-sm fixed top-0 left-0 right-0 z-40 transition-all duration-300">
+            <div class="container mx-auto px-4 py-3 flex items-center justify-between">
+                <div class="flex items-center space-x-2">
+                    <i class="fa fa-globe text-primary text-2xl"></i>
+                    <h1 class="text-xl font-bold bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent">虚拟人生</h1>
+                </div>
+                
+                <div class="flex items-center space-x-6">
+                    <button id="time-control-btn" class="flex items-center space-x-1 text-sm text-slate-600 hover:text-primary transition-colors">
+                        <i class="fa fa-clock-o"></i>
+                        <span>时间: 60x</span>
+                    </button>
+                    
+                    <button id="log-btn" class="flex items-center space-x-1 text-sm text-slate-600 hover:text-primary transition-colors relative">
+                        <i class="fa fa-book"></i>
+                        <span>日志</span>
+                        <span id="log-notification" class="absolute -top-1 -right-1 w-4 h-4 bg-accent text-white text-xs rounded-full flex items-center justify-center hidden">1</span>
+                    </button>
+                    
+                    <div id="player-info" class="flex items-center space-x-2">
+                        <div class="w-8 h-8 rounded-full overflow-hidden border-2 border-primary">
+                            <img id="player-avatar-mini" src="https://picsum.photos/id/64/100/100" alt="玩家头像" class="w-full h-full object-cover">
+                        </div>
+                        <span id="player-name-mini" class="font-medium text-sm">新人冒险者</span>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <!-- 人物创建界面 -->
+        <section id="character-creation" class="min-h-screen flex items-center justify-center p-4 pt-20">
+            <div class="bg-white rounded-2xl shadow-xl w-full max-w-2xl overflow-hidden transform transition-all duration-500">
+                <div class="bg-gradient-to-r from-primary to-secondary p-6 text-white">
+                    <h2 class="text-2xl font-bold mb-2">创建你的虚拟人物</h2>
+                    <p class="opacity-90">定制你的角色，开始虚拟人生之旅</p>
+                </div>
+                
+                <div class="p-6">
+                    <form id="creation-form" class="space-y-6">
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div>
+                                <label class="block text-sm font-medium text-slate-700 mb-1" for="nickname">昵称</label>
+                                <input type="text" id="nickname" name="nickname" placeholder="输入你的二次元昵称 (如: 星野みゆき)" 
+                                    class="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-primary/50 focus:border-primary outline-none transition-all">
+                            </div>
+                            
+                            <div>
+                                <label class="block text-sm font-medium text-slate-700 mb-1">性别</label>
+                                <div class="flex space-x-4">
+                                    <label class="inline-flex items-center">
+                                        <input type="radio" name="gender" value="male" checked class="w-4 h-4 text-primary focus:ring-primary/50">
+                                        <span class="ml-2 text-sm">男</span>
+                                    </label>
+                                    <label class="inline-flex items-center">
+                                        <input type="radio" name="gender" value="female" class="w-4 h-4 text-primary focus:ring-primary/50">
+                                        <span class="ml-2 text-sm">女</span>
+                                    </label>
+                                    <label class="inline-flex items-center">
+                                        <input type="radio" name="gender" value="other" class="w-4 h-4 text-primary focus:ring-primary/50">
+                                        <span class="ml-2 text-sm">其他</span>
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div>
+                            <label class="block text-sm font-medium text-slate-700 mb-3">头像选择</label>
+                            <div class="grid grid-cols-5 gap-3">
+                                <div class="avatar-option cursor-pointer rounded-lg overflow-hidden border-2 border-transparent hover:border-primary transition-all">
+                                    <img src="https://picsum.photos/id/64/100/100" alt="头像选项1" class="w-full aspect-square object-cover">
+                                </div>
+                                <div class="avatar-option cursor-pointer rounded-lg overflow-hidden border-2 border-transparent hover:border-primary transition-all">
+                                    <img src="https://picsum.photos/id/65/100/100" alt="头像选项2" class="w-full aspect-square object-cover">
+                                </div>
+                                <div class="avatar-option cursor-pointer rounded-lg overflow-hidden border-2 border-transparent hover:border-primary transition-all">
+                                    <img src="https://picsum.photos/id/66/100/100" alt="头像选项3" class="w-full aspect-square object-cover">
+                                </div>
+                                <div class="avatar-option cursor-pointer rounded-lg overflow-hidden border-2 border-transparent hover:border-primary transition-all">
+                                    <img src="https://picsum.photos/id/67/100/100" alt="头像选项4" class="w-full aspect-square object-cover">
+                                </div>
+                                <div class="avatar-option cursor-pointer rounded-lg overflow-hidden border-2 border-transparent hover:border-primary transition-all">
+                                    <img src="https://picsum.photos/id/68/100/100" alt="头像选项5" class="w-full aspect-square object-cover">
+                                </div>
+                            </div>
+                            <input type="hidden" id="avatar-url" value="https://picsum.photos/id/64/100/100">
+                        </div>
+                        
+                        <div>
+                            <label class="block text-sm font-medium text-slate-700 mb-1">性格类型 (MBTI)</label>
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <select id="personality" class="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-primary/50 focus:border-primary outline-none transition-all">
+                                    <option value="INFP">调停者 - 理想主义，富有洞察力</option>
+                                    <option value="ENFP">追梦人 - 热情，有创造力，社交能力强</option>
+                                    <option value="INFJ">咨询师 - 富有洞察力，有同情心</option>
+                                    <option value="ENFJ">教育家 - 有魅力，有说服力，负责任</option>
+                                    <option value="INTJ">战略家 - 有远见，分析力强，果断</option>
+                                    <option value="ENTJ">指挥官 - 果断，有领导力，有决心</option>
+                                    <option value="INTP">逻辑学家 - 分析力强，好奇心重，有创造力</option>
+                                    <option value="ENTP">辩论家 - 聪明，机智，喜欢挑战</option>
+                                    <option value="ISFP">艺术家 - 灵活，敏感，善于观察</option>
+                                    <option value="ESFP">表演者 - 外向，友好，喜欢享受生活</option>
+                                    <option value="ISFJ">守卫者 - 有责任心，忠诚，周到</option>
+                                    <option value="ESFJ">领事 - 热心，有组织能力，善于社交</option>
+                                    <option value="ISTP">手艺人 - 灵活，实际，善于解决问题</option>
+                                    <option value="ESTP">创业者 - 实际，果断，喜欢行动</option>
+                                    <option value="ISTJ">检查官 - 有责任心，细致，可靠</option>
+                                    <option value="ESTJ">总经理 - 果断，有组织能力，负责任</option>
+                                </select>
+                                
+                                <button type="button" id="random-personality" class="flex items-center justify-center space-x-2 px-4 py-2 border border-primary text-primary rounded-lg hover:bg-primary hover:text-white transition-all">
+                                    <i class="fa fa-random"></i>
+                                    <span>随机性格</span>
+                                </button>
+                            </div>
+                            <p id="personality-description" class="mt-2 text-sm text-slate-600 italic">这种性格的人富有理想主义，对他人富有同情心，喜欢探索人生的意义和价值。</p>
+                        </div>
+                        
+                        <div class="pt-4">
+                            <button type="submit" class="w-full bg-primary hover:bg-primary/90 text-white font-medium py-3 px-4 rounded-lg transition-all shadow-md hover:shadow-lg flex items-center justify-center space-x-2">
+                                <span>开始虚拟人生</span>
+                                <i class="fa fa-arrow-right"></i>
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </section>
+
+        <!-- 游戏主界面 -->
+        <section id="game-world" class="hidden pt-16 p-4">
+            <div class="container mx-auto">
+                <div class="flex flex-col lg:flex-row gap-4">
+                    <!-- 地图区域 -->
+                    <div class="lg:w-3/4 bg-white rounded-xl shadow-md overflow-hidden relative">
+                        <div class="p-3 bg-slate-50 border-b flex justify-between items-center">
+                            <h2 class="font-semibold text-slate-700">虚拟X世界</h2>
+                            <div class="flex items-center space-x-2">
+                                <button id="move-mode-toggle" class="text-xs px-2 py-1 bg-primary/10 text-primary rounded hover:bg-primary/20 transition-colors">
+                                    <i class="fa fa-random mr-1"></i>随机移动
+                                </button>
+                                <span class="text-xs text-slate-500">点击地图指定移动位置</span>
+                            </div>
+                        </div>
+                        
+                        <!-- 地图容器 -->
+                        <div id="map-container" class="relative w-full aspect-square max-w-[800px] mx-auto">
+                            <!-- 地图背景 -->
+                            <div id="map" class="absolute inset-0 bg-slate-100">
+                                <!-- 地图将通过JS绘制 -->
+                            </div>
+                            
+                            <!-- 人物将通过JS动态添加 -->
+                        </div>
+                        
+                        <!-- 聊天窗口 (默认隐藏) -->
+                        <div id="chat-window" class="hidden absolute bottom-4 left-1/2 transform -translate-x-1/2 w-[90%] max-w-md bg-white rounded-xl shadow-lg p-4 border border-slate-200 z-30">
+                            <div class="flex justify-between items-center mb-3">
+                                <h3 class="font-medium text-slate-800" id="chat-title">与 [人物名称] 聊天中</h3>
+                                <span id="compatibility" class="text-xs px-2 py-0.5 bg-green-100 text-green-800 rounded-full">性格匹配度: 75%</span>
+                            </div>
+                            
+                            <div id="chat-messages" class="h-40 overflow-y-auto mb-3 space-y-3 p-2">
+                                <!-- 聊天消息将通过JS动态添加 -->
+                            </div>
+                            
+                            <div class="flex space-x-2">
+                                <!-- 移除发送消息按钮，改为完全自动聊天 -->
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- 右侧面板 -->
+                    <div class="lg:w-1/4 space-y-4">
+                        <!-- 人物信息 -->
+                        <div class="bg-white rounded-xl shadow-md overflow-hidden">
+                            <div class="bg-gradient-to-r from-primary/20 to-secondary/20 p-4">
+                                <h2 class="font-semibold text-slate-800">人物信息</h2>
+                            </div>
+                            <div class="p-4">
+                                <div class="flex items-center space-x-3 mb-4">
+                                    <div class="w-16 h-16 rounded-full overflow-hidden border-2 border-primary">
+                                        <img id="player-avatar" src="https://picsum.photos/id/64/100/100" alt="玩家头像" class="w-full h-full object-cover">
+                                    </div>
+                                    <div>
+                                        <h3 id="player-name" class="font-medium text-lg">新人冒险者</h3>
+                                        <p id="player-personality" class="text-sm text-slate-600">调停者 (INFP)</p>
+                                    </div>
+                                </div>
+                                
+                                <div class="space-y-2">
+                                    <div class="flex justify-between items-center text-sm">
+                                        <span class="text-slate-600">当前位置:</span>
+                                        <span id="player-location" class="font-medium">家附近</span>
+                                    </div>
+                                    <div class="flex justify-between items-center text-sm">
+                                        <span class="text-slate-600">已认识:</span>
+                                        <span id="acquaintance-count" class="font-medium">0 人</span>
+                                    </div>
+                                    <div class="flex justify-between items-center text-sm">
+                                        <span class="text-slate-600">今日活动:</span>
+                                        <span id="today-activities" class="font-medium">0 件</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- 其他人物列表 -->
+                        <div class="bg-white rounded-xl shadow-md overflow-hidden">
+                            <div class="bg-gradient-to-r from-primary/20 to-secondary/20 p-4">
+                                <h2 class="font-semibold text-slate-800">虚拟居民</h2>
+                            </div>
+                            <div id="npcs-list" class="max-h-64 overflow-y-auto">
+                                <!-- NPC列表将通过JS动态添加 -->
+                            </div>
+                        </div>
+                        
+                        <!-- 时间控制 -->
+                        <div class="bg-white rounded-xl shadow-md overflow-hidden">
+                            <div class="bg-gradient-to-r from-primary/20 to-secondary/20 p-4">
+                                <h2 class="font-semibold text-slate-800">时间控制</h2>
+                            </div>
+                            <div class="p-4">
+                                <div class="flex items-center justify-between mb-3">
+                                    <span class="text-sm text-slate-600">时间流速</span>
+                                    <span id="time-multiplier" class="font-medium">60x</span>
+                                </div>
+                                <input type="range" id="time-control" min="1" max="300" value="60" 
+                                    class="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-primary">
+                                <div class="flex justify-between text-xs text-slate-500 mt-1">
+                                    <span>1x</span>
+                                    <span>150x</span>
+                                    <span>300x</span>
+                                </div>
+                                
+                                <div class="mt-4 pt-4 border-t border-slate-100">
+                                    <div class="text-center text-sm text-slate-500 mb-1">虚拟世界时间</div>
+                                    <div id="virtual-time" class="text-center font-medium">09:00</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 日志面板 (默认隐藏) -->
+        <div id="log-panel" class="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+            <div class="bg-white rounded-xl shadow-2xl w-full max-w-3xl max-h-[90vh] flex flex-col">
+                <div class="p-4 border-b flex justify-between items-center">
+                    <h2 class="font-bold text-lg">人生日志</h2>
+                    <button id="close-log" class="text-slate-500 hover:text-slate-700 transition-colors">
+                        <i class="fa fa-times"></i>
+                    </button>
+                </div>
+                
+                <div id="log-content" class="flex-1 overflow-y-auto p-4 space-y-4">
+                    <!-- 日志内容将通过JS动态添加 -->
+                    <div class="text-center text-slate-500 py-8">
+                        <i class="fa fa-book-open text-4xl mb-2 opacity-30"></i>
+                        <p>你的人生日志还是空白的</p>
+                        <p class="text-sm mt-1">与其他人物互动来记录精彩瞬间</p>
+                    </div>
+                </div>
+                
+                <div class="p-4 border-t">
+                    <button id="clear-log" class="text-sm text-slate-600 hover:text-red-500 transition-colors">
+                        <i class="fa fa-trash mr-1"></i> 清空日志
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 私信窗口 (默认隐藏) -->
+        <div id="message-window" class="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+            <div class="bg-white rounded-xl shadow-2xl w-full max-w-md">
+                <div class="p-4 border-b flex justify-between items-center">
+                    <h2 class="font-bold text-lg">发送私信给 <span id="message-recipient">人物名称</span></h2>
+                    <button id="close-message" class="text-slate-500 hover:text-slate-700 transition-colors">
+                        <i class="fa fa-times"></i>
+                    </button>
+                </div>
+                
+                <div class="p-4">
+                    <textarea id="message-content" rows="5" placeholder="输入你想发送的消息..." 
+                        class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-primary/50 focus:border-primary outline-none transition-all resize-none"></textarea>
+                </div>
+                
+                <div class="p-4 border-t flex justify-end space-x-3">
+                    <button id="cancel-message" class="px-4 py-2 border border-slate-300 rounded-lg text-slate-700 hover:bg-slate-50 transition-colors">
+                        取消
+                    </button>
+                    <button id="send-message" class="px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors">
+                        发送
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 游戏主逻辑
+        document.addEventListener('DOMContentLoaded', () => {
+            // 页面加载
+            setTimeout(() => {
+                document.getElementById('loader').classList.add('opacity-0', 'pointer-events-none');
+                setTimeout(() => {
+                    document.getElementById('loader').style.display = 'none';
+                    document.getElementById('app').classList.remove('hidden');
+                }, 500);
+            }, 1500);
+            
+            // 全局状态
+            const gameState = {
+                player: null,
+                npcs: [],
+                mapSize: 800,
+                gridSize: 100, // 100px per grid
+                moveMode: 'random', // 'random' or 'direct'
+                timeMultiplier: 60,
+                virtualTime: new Date(2023, 0, 1, 9, 0, 0), // 初始时间 9:00
+                isChatting: false,
+                currentChatPartner: null,
+                log: [],
+                // 添加最近聊天记录，用于避免重复聊天
+                recentChats: [] // 存储 {npcId, timestamp}
+            };
+            
+            // 性格类型和描述
+            const personalityTypes = {
+                'INFP': '调停者 - 理想主义，富有洞察力，对他人富有同情心',
+                'ENFP': '追梦人 - 热情，有创造力，社交能力强，充满活力',
+                'INFJ': '咨询师 - 富有洞察力，有同情心，坚定而有说服力',
+                'ENFJ': '教育家 - 有魅力，有说服力，负责任，善于引导他人',
+                'INTJ': '战略家 - 有远见，分析力强，果断，喜欢独立思考',
+                'ENTJ': '指挥官 - 果断，有领导力，有决心，善于组织和规划',
+                'INTP': '逻辑学家 - 分析力强，好奇心重，有创造力，喜欢抽象思维',
+                'ENTP': '辩论家 - 聪明，机智，喜欢挑战，善于发现问题',
+                'ISFP': '艺术家 - 灵活，敏感，善于观察，喜欢通过行动表达自己',
+                'ESFP': '表演者 - 外向，友好，喜欢享受生活，善于即兴发挥',
+                'ISFJ': '守卫者 - 有责任心，忠诚，周到，善于照顾他人',
+                'ESFJ': '领事 - 热心，有组织能力，善于社交，重视和谐',
+                'ISTP': '手艺人 - 灵活，实际，善于解决问题，喜欢动手操作',
+                'ESTP': '创业者 - 实际，果断，喜欢行动，善于把握机会',
+                'ISTJ': '检查官 - 有责任心，细致，可靠，重视传统和规则',
+                'ESTJ': '总经理 - 果断，有组织能力，负责任，喜欢明确的结构'
+            };
+            
+            // 性格描述详情
+            const personalityDescriptions = {
+                'INFP': '这种性格的人富有理想主义，对他人富有同情心，喜欢探索人生的意义和价值。他们通常安静、内敛，但内心世界丰富，对美和情感有深刻的理解。',
+                'ENFP': '这种性格的人充满热情和创造力，社交能力强，对生活充满好奇。他们善于激励他人，喜欢新的体验和想法，往往能给周围的人带来活力。',
+                'INFJ': '这种性格的人富有洞察力和同情心，能够理解他人的感受和动机。他们通常有强烈的价值观，坚定而有说服力，致力于帮助他人成长。',
+                'ENFJ': '这种性格的人有魅力，善于社交，有很强的说服力和组织能力。他们重视人际关系，善于引导他人，往往在团队中扮演领导者的角色。',
+                'INTJ': '这种性格的人有远见，分析能力强，善于战略思考。他们果断而独立，喜欢挑战复杂的问题，往往能提出创新的解决方案。',
+                'ENTJ': '这种性格的人果断，有领导力，善于组织和规划。他们有强烈的决心和目标感，能够有效地推动团队实现目标。',
+                'INTP': '这种性格的人分析能力强，好奇心重，喜欢抽象思维和逻辑推理。他们善于发现问题，有很强的创造力，往往在科学和技术领域表现出色。',
+                'ENTP': '这种性格的人聪明，机智，喜欢挑战和辩论。他们善于发现问题和机会，有很强的应变能力，往往能提出独特的见解。',
+                'ISFP': '这种性格的人灵活，敏感，善于观察和感受周围的世界。他们喜欢通过行动和艺术表达自己，往往有很强的审美能力。',
+                'ESFP': '这种性格的人外向，友好，喜欢享受生活和社交。他们善于即兴发挥，能够给周围的人带来欢乐，往往是聚会中的焦点。',
+                'ISFJ': '这种性格的人有责任心，忠诚，周到，善于照顾他人。他们重视传统和稳定，往往是团队中可靠的支持者。',
+                'ESFJ': '这种性格的人热心，有组织能力，善于社交，重视和谐。他们善于理解他人的需求，往往在社区和团队中扮演组织者的角色。',
+                'ISTP': '这种性格的人灵活，实际，善于解决问题和动手操作。他们冷静而理性，喜欢通过实践学习，往往在技术和手工艺领域表现出色。',
+                'ESTP': '这种性格的人实际，果断，喜欢行动和冒险。他们善于把握机会，有很强的应变能力，往往在危机中表现出色。',
+                'ISTJ': '这种性格的人有责任心，细致，可靠，重视传统和规则。他们善于组织和管理，往往在需要精确和耐心的工作中表现出色。',
+                'ESTJ': '这种性格的人果断，有组织能力，负责任，喜欢明确的结构和规则。他们善于管理和执行，往往在企业和政府机构中担任领导职务。'
+            };
+            
+            // 预设的NPC数据（二次元风格）
+            const npcData = [
+                { name: "桜雨(さくらめ)", avatar: "https://picsum.photos/id/237/100/100", personality: "INFP" },
+                { name: "星野辉", avatar: "https://picsum.photos/id/238/100/100", personality: "ESTJ" },
+                { name: "月见花音", avatar: "https://picsum.photos/id/239/100/100", personality: "ESFP" },
+                { name: "雷电将军", avatar: "https://picsum.photos/id/240/100/100", personality: "ENTP" },
+                { name: "雪ノ下雪乃", avatar: "https://picsum.photos/id/241/100/100", personality: "INTJ" },
+                { name: "小鳥遊空", avatar: "https://picsum.photos/id/242/100/100", personality: "ISFJ" },
+                { name: "綾波零", avatar: "https://picsum.photos/id/243/100/100", personality: "ENFJ" },
+                { name: "不二周助", avatar: "https://picsum.photos/id/244/100/100", personality: "ISTP" }
+            ];
+            
+            // 预设的聊天内容（二次元风格）
+            const chatMessages = [
+                "你好！初次见面，请多指教~ (。・∀・)ノ゙",
+                "今天的天气真是完美呢！就像动漫里的日常一样 ☀️✨",
+                "刚从漫画店出来，新的轻小说真的超棒！ 📚✨",
+                "你平时喜欢看什么动漫呀？",
+                "我最近在练习画画，虽然还不如大触们画得好 (´∀`)",
+                "这家女仆咖啡厅的咖啡真的很棒！欢迎光临主人~ ☕👗",
+                "听说下周有漫展，你有兴趣一起去吗？",
+                "你的性格很有趣呢，就像我喜欢的动漫角色一样~",
+                "我超喜欢旅行！特别是去动漫圣地巡礼 ✈️🗾",
+                "你觉得这个城市最像哪部动漫的场景？",
+                "我最近看了一部超棒的新番，强烈推荐！ 📺✨",
+                "你的穿搭很有二次元的感觉呢！(๑˃ᴗ˂)ﻭ",
+                "今天遇到了很有趣的事，就像轻小说里的剧情~",
+                "你喜欢什么类型的音乐？我超爱VOCALOID！ 🎵🎤",
+                "感觉我们很合得来呢！就像命运般的相遇~ (´∇｀)",
+                "下次一起去二次元周边店逛逛吧！ 🛍️✨",
+                "你看起来就像从动漫里走出来的角色呢~",
+                "我不太擅长社交，但和你聊天很开心 (〃ﾟ3ﾟ〃)",
+                "你对未来有什么梦想吗？想成为漫画家吗？",
+                "我超爱小动物！特别是猫咪，太可爱了~ 🐱💕",
+                "今天的运势一定很好，能遇到你真是太棒了！",
+                "你玩手游吗？最近那个二次元游戏超火的！📱✨",
+                "这种邂逅感觉就像恋爱游戏的剧情呢~ (´艸｀*)",
+                "你的声音很好听，有考虑过当声优吗？🎙️",
+                "一起去卡拉OK唱动漫歌曲吧！绝对很棒！🎤🎵"
+            ];
+            
+            // 预设的地点（二次元风格）
+            const locations = [
+                "温馨小屋", "樱花公园", "图书馆", "女仆咖啡厅", "学园", "医院", "便利店", 
+                "健身房", "电影院", "中央公园", "居酒屋", "拉面店", "秋叶原", "车站", "漫画店"
+            ];
+            
+            // 初始化人物创建界面
+            initCharacterCreation();
+            
+            // 初始化地图
+            drawMap();
+            
+            // 初始化事件监听
+            initEventListeners();
+            
+            // 初始化人物创建界面
+            function initCharacterCreation() {
+                // 头像选择
+                const avatarOptions = document.querySelectorAll('.avatar-option');
+                avatarOptions.forEach(option => {
+                    option.addEventListener('click', () => {
+                        // 移除所有选中状态
+                        avatarOptions.forEach(opt => opt.classList.remove('border-primary'));
+                        avatarOptions.forEach(opt => opt.classList.add('border-transparent'));
+                        
+                        // 添加当前选中状态
+                        option.classList.remove('border-transparent');
+                        option.classList.add('border-primary');
+                        
+                        // 更新隐藏字段
+                        const avatarUrl = option.querySelector('img').src;
+                        document.getElementById('avatar-url').value = avatarUrl;
+                    });
+                });
+                
+                // 默认选中第一个头像
+                avatarOptions[0].classList.remove('border-transparent');
+                avatarOptions[0].classList.add('border-primary');
+                
+                // 随机性格按钮
+                document.getElementById('random-personality').addEventListener('click', () => {
+                    const personalities = Object.keys(personalityTypes);
+                    const randomPersonality = personalities[Math.floor(Math.random() * personalities.length)];
+                    document.getElementById('personality').value = randomPersonality;
+                    updatePersonalityDescription(randomPersonality);
+                });
+                
+                // 性格选择变化时更新描述
+                document.getElementById('personality').addEventListener('change', (e) => {
+                    updatePersonalityDescription(e.target.value);
+                });
+                
+                // 表单提交
+                document.getElementById('creation-form').addEventListener('submit', (e) => {
+                    e.preventDefault();
+                    createPlayer();
+                });
+            }
+            
+            // 更新性格描述
+            function updatePersonalityDescription(personality) {
+                document.getElementById('personality-description').textContent = personalityDescriptions[personality];
+            }
+            
+            // 创建玩家
+            function createPlayer() {
+                const nickname = document.getElementById('nickname').value || '新人冒险者';
+                const gender = document.querySelector('input[name="gender"]:checked').value;
+                const avatar = document.getElementById('avatar-url').value;
+                const personality = document.getElementById('personality').value;
+                
+                // 创建玩家对象
+                gameState.player = {
+                    id: 'player',
+                    name: nickname,
+                    gender: gender,
+                    avatar: avatar,
+                    personality: personality,
+                    x: gameState.mapSize / 2, // 初始位置在中心
+                    y: gameState.mapSize / 2,
+                    destination: null,
+                    acquaintances: []
+                };
+                
+                // 创建NPC
+                createNPCs();
+                
+                // 更新UI
+                updatePlayerInfo();
+                renderNPCsList();
+                renderCharacters();
+                
+                // 隐藏创建界面，显示游戏世界
+                document.getElementById('character-creation').classList.add('hidden');
+                document.getElementById('game-world').classList.remove('hidden');
+                
+                // 开始游戏循环
+                startGameLoop();
+            }
+            
+            // 创建NPC
+            function createNPCs() {
+                npcData.forEach((npc, index) => {
+                    // 随机位置，但确保在道路上
+                    let x, y;
+                    do {
+                        x = Math.floor(Math.random() * 8) * 100;
+                        y = Math.floor(Math.random() * 8) * 100;
+                    } while (!isOnRoad(x, y));
+                    
+                    gameState.npcs.push({
+                        id: `npc-${index}`,
+                        name: npc.name,
+                        avatar: npc.avatar,
+                        personality: npc.personality,
+                        x: x,
+                        y: y,
+                        destination: null,
+                        acquaintances: []
+                    });
+                });
+            }
+            
+            // 更新玩家信息
+            function updatePlayerInfo() {
+                document.getElementById('player-avatar').src = gameState.player.avatar;
+                document.getElementById('player-avatar-mini').src = gameState.player.avatar;
+                document.getElementById('player-name').textContent = gameState.player.name;
+                document.getElementById('player-name-mini').textContent = gameState.player.name;
+                document.getElementById('player-personality').textContent = 
+                    `${personalityTypes[gameState.player.personality]} (${gameState.player.personality})`;
+                
+                updatePlayerLocation();
+            }
+            
+            // 更新玩家位置显示
+            function updatePlayerLocation() {
+                const locationIndex = Math.floor(gameState.player.x / 100) + Math.floor(gameState.player.y / 100) * 8;
+                document.getElementById('player-location').textContent = locations[locationIndex % locations.length];
+                document.getElementById('acquaintance-count').textContent = `${gameState.player.acquaintances.length} 人`;
+                document.getElementById('today-activities').textContent = `${gameState.log.length} 件`;
+            }
+            
+            // 渲染NPC列表
+            function renderNPCsList() {
+                const npcsList = document.getElementById('npcs-list');
+                npcsList.innerHTML = '';
+                
+                gameState.npcs.forEach(npc => {
+                    const isAcquaintance = gameState.player.acquaintances.includes(npc.id);
+                    const npcElement = document.createElement('div');
+                    npcElement.className = `flex items-center p-3 border-b last:border-0 hover:bg-slate-50 transition-colors ${isAcquaintance ? 'bg-primary/5' : ''}`;
+                    npcElement.innerHTML = `
+                        <div class="w-10 h-10 rounded-full overflow-hidden mr-3">
+                            <img src="${npc.avatar}" alt="${npc.name}" class="w-full h-full object-cover">
+                        </div>
+                        <div class="flex-1 min-w-0">
+                            <h4 class="font-medium text-sm truncate">${npc.name}</h4>
+                            <p class="text-xs text-slate-500 truncate">${personalityTypes[npc.personality].split(' - ')[0]}</p>
+                        </div>
+                        ${isAcquaintance ? `<span class="text-xs px-2 py-0.5 bg-green-100 text-green-800 rounded-full">已认识</span>` : ''}
+                    `;
+                    npcsList.appendChild(npcElement);
+                });
+            }
+            
+            // 绘制地图
+            function drawMap() {
+                const map = document.getElementById('map');
+                map.style.width = `${gameState.mapSize}px`;
+                map.style.height = `${gameState.mapSize}px`;
+                
+                // 创建SVG元素
+                const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+                svg.setAttribute("width", gameState.mapSize);
+                svg.setAttribute("height", gameState.mapSize);
+                map.appendChild(svg);
+                
+                // 绘制网格道路
+                for (let i = 0; i <= gameState.mapSize; i += gameState.gridSize) {
+                    // 水平线
+                    const hLine = document.createElementNS("http://www.w3.org/2000/svg", "line");
+                    hLine.setAttribute("x1", 0);
+                    hLine.setAttribute("y1", i);
+                    hLine.setAttribute("x2", gameState.mapSize);
+                    hLine.setAttribute("y2", i);
+                    hLine.setAttribute("stroke", "#CBD5E1");
+                    hLine.setAttribute("stroke-width", "10");
+                    svg.appendChild(hLine);
+                    
+                    // 垂直线
+                    const vLine = document.createElementNS("http://www.w3.org/2000/svg", "line");
+                    vLine.setAttribute("x1", i);
+                    vLine.setAttribute("y1", 0);
+                    vLine.setAttribute("x2", i);
+                    vLine.setAttribute("y2", gameState.mapSize);
+                    vLine.setAttribute("stroke", "#CBD5E1");
+                    vLine.setAttribute("stroke-width", "10");
+                    svg.appendChild(vLine);
+                }
+                
+                // 绘制建筑物
+                const buildingColors = ['#93C5FD', '#FCD34D', '#FCA5A5', '#A7F3D0', '#C4B5FD', '#FECACA', '#BFDBFE'];
+                const buildingTypes = ['🏫', '🏥', '🏪', '☕', '🎬', '🏭', '🏢'];
+                
+                for (let x = 50; x < gameState.mapSize; x += gameState.gridSize) {
+                    for (let y = 50; y < gameState.mapSize; y += gameState.gridSize) {
+                        // 随机决定是否放置建筑物
+                        if (Math.random() > 0.3) continue;
+                        
+                        const building = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+                        const size = 80;
+                        const color = buildingColors[Math.floor(Math.random() * buildingColors.length)];
+                        
+                        building.setAttribute("x", x - size/2);
+                        building.setAttribute("y", y - size/2);
+                        building.setAttribute("width", size);
+                        building.setAttribute("height", size);
+                        building.setAttribute("rx", 5);
+                        building.setAttribute("fill", color);
+                        building.setAttribute("opacity", 0.7);
+                        svg.appendChild(building);
+                        
+                        // 添加建筑物图标
+                        const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
+                        text.setAttribute("x", x);
+                        text.setAttribute("y", y + 8);
+                        text.setAttribute("text-anchor", "middle");
+                        text.setAttribute("font-size", "24");
+                        text.textContent = buildingTypes[Math.floor(Math.random() * buildingTypes.length)];
+                        svg.appendChild(text);
+                    }
+                }
+            }
+            
+            // 渲染所有人物
+            function renderCharacters() {
+                const mapContainer = document.getElementById('map-container');
+                
+                // 清除现有角色
+                document.querySelectorAll('.character').forEach(el => el.remove());
+                
+                // 渲染玩家
+                renderCharacter(gameState.player, true);
+                
+                // 渲染NPC
+                gameState.npcs.forEach(npc => {
+                    renderCharacter(npc, false);
+                });
+            }
+            
+            // 渲染单个人物
+            function renderCharacter(character, isPlayer) {
+                const mapContainer = document.getElementById('map-container');
+                const characterElement = document.createElement('div');
+                
+                // 确定样式和类
+                const classes = `character absolute transform -translate-x-1/2 -translate-y-1/2 transition-all duration-500 ease-out ${isPlayer ? 'z-20' : 'z-10'}`;
+                characterElement.className = classes;
+                characterElement.id = character.id;
+                characterElement.style.left = `${character.x}px`;
+                characterElement.style.top = `${character.y}px`;
+                
+                // 头像元素
+                const avatarClasses = `w-10 h-10 md:w-12 md:h-12 rounded-full overflow-hidden border-2 ${isPlayer ? 'border-primary avatar-pulse' : 'border-white shadow-md'}`;
+                characterElement.innerHTML = `
+                    <div class="${avatarClasses}">
+                        <img src="${character.avatar}" alt="${character.name}" class="w-full h-full object-cover">
+                    </div>
+                    <div class="absolute -bottom-6 left-1/2 transform -translate-x-1/2 bg-white text-xs font-medium px-2 py-1 rounded shadow whitespace-nowrap">
+                        ${character.name}
+                    </div>
+                `;
+                
+                mapContainer.appendChild(characterElement);
+            }
+            
+            // 检查是否在道路上
+            function isOnRoad(x, y) {
+                // 检查是否在水平线或垂直线上
+                return x % gameState.gridSize === 0 || y % gameState.gridSize === 0;
+            }
+            
+            // 生成随机目的地
+            function generateRandomDestination(character) {
+                let x, y;
+                do {
+                    x = Math.floor(Math.random() * 8) * 100;
+                    y = Math.floor(Math.random() * 8) * 100;
+                    // 确保目的地与当前位置不同
+                } while ((x === character.x && y === character.y) || !isOnRoad(x, y));
+                
+                return { x, y };
+            }
+            
+            // 移动人物
+            function moveCharacter(character, deltaTime) {
+                if (!character.destination) {
+                    character.destination = generateRandomDestination(character);
+                }
+                
+                // 计算移动距离 (5公里/小时，游戏时间是现实的timeMultiplier倍)
+                // 每100px = 2公里，所以每像素 = 0.02公里
+                // 5公里/小时 = 5 / 3600 公里/秒 (现实时间)
+                // 游戏中每秒 = 现实时间的timeMultiplier秒
+                // 所以游戏中每秒移动: 5 / 3600 * timeMultiplier / 0.02 像素
+                const moveSpeed = (5 / 3600) * gameState.timeMultiplier / 0.02; // 像素/秒
+                const distancePerFrame = moveSpeed * deltaTime;
+                
+                // 计算到目的地的距离
+                const dx = character.destination.x - character.x;
+                const dy = character.destination.y - character.y;
+                const distance = Math.sqrt(dx * dx + dy * dy);
+                
+                if (distance <= distancePerFrame) {
+                    // 到达目的地
+                    character.x = character.destination.x;
+                    character.y = character.destination.y;
+                    character.destination = null;
+                } else {
+                    // 向目的地移动
+                    const ratio = distancePerFrame / distance;
+                    character.x += dx * ratio;
+                    character.y += dy * ratio;
+                }
+                
+                // 更新UI位置
+                const element = document.getElementById(character.id);
+                if (element) {
+                    element.style.left = `${character.x}px`;
+                    element.style.top = `${character.y}px`;
+                }
+            }
+            
+            // 检查是否在最近聊天记录中
+            function hasRecentChat(npcId) {
+                const now = Date.now();
+                const oneHour = 60 * 60 * 1000; // 1小时内不重复聊天
+                
+                // 清理过期记录
+                gameState.recentChats = gameState.recentChats.filter(chat => now - chat.timestamp < oneHour);
+                
+                // 检查是否有最近聊天
+                return gameState.recentChats.some(chat => chat.npcId === npcId);
+            }
+            
+            // 检查人物之间是否相遇
+            function checkEncounters() {
+                if (gameState.isChatting) return;
+                
+                // 检查玩家与NPC的距离
+                for (const npc of gameState.npcs) {
+                    // 检查是否最近已经聊过天
+                    if (hasRecentChat(npc.id)) continue;
+                    
+                    const dx = gameState.player.x - npc.x;
+                    const dy = gameState.player.y - npc.y;
+                    const distance = Math.sqrt(dx * dx + dy * dy);
+                    
+                    // 如果距离小于20像素，认为相遇
+                    if (distance < 20) {
+                        startChat(npc);
+                        break;
+                    }
+                }
+            }
+            
+            // 开始聊天
+            function startChat(npc) {
+                gameState.isChatting = true;
+                gameState.currentChatPartner = npc;
+                
+                // 添加到最近聊天记录
+                gameState.recentChats.push({
+                    npcId: npc.id,
+                    timestamp: Date.now()
+                });
+                
+                // 停止移动
+                gameState.player.destination = null;
+                npc.destination = null;
+                
+                // 显示聊天窗口
+                const chatWindow = document.getElementById('chat-window');
+                document.getElementById('chat-title').textContent = `与 ${npc.name} 聊天中`;
+                
+                // 随机生成性格匹配度
+                let compatibility = Math.floor(Math.random() * 50) + 30; // 30-80%
+                document.getElementById('compatibility').textContent = `性格匹配度: ${compatibility}%`;
+                
+                // 清空聊天消息
+                const chatMessagesContainer = document.getElementById('chat-messages');
+                chatMessagesContainer.innerHTML = '';
+                
+                // 添加初始消息
+                addChatMessage(npc.name, getRandomChatMessage(), false);
+                
+                chatWindow.classList.remove('hidden');
+                
+                // 自动发送消息
+                let messageCount = 0;
+                const totalMessages = 5 + Math.floor(Math.random() * 4); // 5-8条消息
+                const messageInterval = setInterval(() => {
+                    if (!gameState.isChatting || messageCount >= totalMessages) {
+                        clearInterval(messageInterval);
+                        // 聊天结束
+                        setTimeout(endChat, 2000);
+                        return;
+                    }
+                    
+                    // 随机决定谁发送消息
+                    if (Math.random() > 0.5) {
+                        addChatMessage(npc.name, getRandomChatMessage(), false);
+                    } else {
+                        addChatMessage(gameState.player.name, getRandomChatMessage(), true);
+                    }
+                    
+                    // 随机调整匹配度
+                    const change = Math.floor(Math.random() * 7) - 3; // -3到3之间的随机变化
+                    compatibility = Math.max(10, Math.min(90, compatibility + change));
+                    document.getElementById('compatibility').textContent = `性格匹配度: ${compatibility}%`;
+                    
+                    messageCount++;
+                }, 2000); // 每2秒发送一条消息
+            }
+            
+            // 获取随机聊天消息
+            function getRandomChatMessage() {
+                return chatMessages[Math.floor(Math.random() * chatMessages.length)];
+            }
+            
+            // 添加聊天消息
+            function addChatMessage(sender, message, isPlayer) {
+                const chatMessagesContainer = document.getElementById('chat-messages');
+                const messageElement = document.createElement('div');
+                
+                messageElement.className = `flex ${isPlayer ? 'justify-end' : 'justify-start'}`;
+                
+                const bubbleClass = isPlayer 
+                    ? 'bg-primary/10 text-slate-800 rounded-lg rounded-tr-none p-2 max-w-[80%] relative chat-bubble-right'
+                    : 'bg-white border border-slate-200 text-slate-800 rounded-lg rounded-tl-none p-2 max-w-[80%] relative chat-bubble-left shadow-sm';
+                
+                messageElement.innerHTML = `
+                    <div class="${bubbleClass}">
+                        <div class="text-xs font-medium mb-1 ${isPlayer ? 'text-primary' : 'text-slate-500'}">${sender}</div>
+                        <div class="text-sm">${message}</div>
+                    </div>
+                `;
+                
+                chatMessagesContainer.appendChild(messageElement);
+                chatMessagesContainer.scrollTop = chatMessagesContainer.scrollHeight;
+            }
+            
+            // 结束聊天
+            function endChat() {
+                if (!gameState.isChatting || !gameState.currentChatPartner) return;
+                
+                const npc = gameState.currentChatPartner;
+                
+                // 隐藏聊天窗口
+                document.getElementById('chat-window').classList.add('hidden');
+                
+                // 标记为已认识
+                if (!gameState.player.acquaintances.includes(npc.id)) {
+                    gameState.player.acquaintances.push(npc.id);
+                    npc.acquaintances.push(gameState.player.id);
+                    
+                    // 更新UI
+                    renderNPCsList();
+                    updatePlayerInfo();
+                }
+                
+                // 添加日志
+                addLogEntry(npc);
+                
+                // 重置状态
+                gameState.isChatting = false;
+                gameState.currentChatPartner = null;
+                
+                // 让角色继续移动
+                gameState.player.destination = generateRandomDestination(gameState.player);
+                npc.destination = generateRandomDestination(npc);
+            }
+            
+            // 添加日志条目
+            function addLogEntry(npc) {
+                const compatibility = parseInt(document.getElementById('compatibility').textContent.match(/\d+/)[0]);
+                const logEntry = {
+                    id: Date.now(),
+                    type: 'encounter',
+                    time: new Date(gameState.virtualTime),
+                    title: `与 ${npc.name} 的命运邂逅`,
+                    content: `你与 ${npc.name} 进行了一次愉快的交谈。你们的性格匹配度为 ${compatibility}%。这种相遇就像动漫里的剧情一样美好~`,
+                    image: generateRandomImage(compatibility),
+                    npcId: npc.id,
+                    npcName: npc.name
+                };
+                
+                gameState.log.unshift(logEntry);
+                updateLogPanel();
+                
+                // 显示通知
+                document.getElementById('log-notification').classList.remove('hidden');
+                
+                // 更新活动计数
+                updatePlayerInfo();
+            }
+            
+            // 生成随机图片
+            function generateRandomImage(compatibility) {
+                // 根据匹配度生成不同类型的图片
+                if (compatibility > 70) {
+                    return `https://picsum.photos/id/${30 + Math.floor(Math.random() * 5)}/300/200`; // 积极的图片
+                } else if (compatibility > 40) {
+                    return `https://picsum.photos/id/${40 + Math.floor(Math.random() * 5)}/300/200`; // 中性的图片
+                } else {
+                    return `https://picsum.photos/id/${50 + Math.floor(Math.random() * 5)}/300/200`; // 不太积极的图片
+                }
+            }
+            
+            // 更新日志面板
+            function updateLogPanel() {
+                const logContent = document.getElementById('log-content');
+                
+                if (gameState.log.length === 0) {
+                    logContent.innerHTML = `
+                        <div class="text-center text-slate-500 py-8">
+                            <i class="fa fa-book-open text-4xl mb-2 opacity-30"></i>
+                            <p>你的人生日志还是空白的</p>
+                            <p class="text-sm mt-1">与其他角色互动来记录精彩的二次元瞬间~</p>
+                        </div>
+                    `;
+                    return;
+                }
+                
+                logContent.innerHTML = '';
+                
+                gameState.log.forEach(entry => {
+                    const dateStr = entry.time.toLocaleDateString();
+                    const timeStr = entry.time.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                    
+                    const logEntryElement = document.createElement('div');
+                    logEntryElement.className = 'bg-slate-50 rounded-lg p-4 shadow-sm';
+                    logEntryElement.innerHTML = `
+                        <div class="flex justify-between items-start mb-2">
+                            <h3 class="font-medium">${entry.title}</h3>
+                            <span class="text-xs text-slate-500">${dateStr} ${timeStr}</span>
+                        </div>
+                        <p class="text-sm text-slate-700 mb-3">${entry.content}</p>
+                        <div class="mb-3 rounded overflow-hidden">
+                            <img src="${entry.image}" alt="${entry.title}" class="w-full h-48 object-cover">
+                        </div>
+                        ${entry.npcId ? `<button class="send-message-btn text-sm text-primary hover:text-primary/80 transition-colors" data-npc-id="${entry.npcId}" data-npc-name="${entry.npcName}">
+                            <i class="fa fa-paper-plane mr-1"></i> 给 ${entry.npcName} 发消息
+                        </button>` : ''}
+                    `;
+                    
+                    logContent.appendChild(logEntryElement);
+                });
+                
+                // 添加发消息按钮事件
+                document.querySelectorAll('.send-message-btn').forEach(btn => {
+                    btn.addEventListener('click', (e) => {
+                        const npcId = e.target.dataset.npcId || e.target.parentElement.dataset.npcId;
+                        const npcName = e.target.dataset.npcName || e.target.parentElement.dataset.npcName;
+                        openMessageWindow(npcId, npcName);
+                    });
+                });
+            }
+            
+            // 打开消息窗口
+            function openMessageWindow(npcId, npcName) {
+                document.getElementById('message-recipient').textContent = npcName;
+                document.getElementById('message-content').value = '';
+                document.getElementById('message-window').classList.remove('hidden');
+                
+                // 存储接收者ID
+                document.getElementById('send-message').dataset.npcId = npcId;
+                document.getElementById('send-message').dataset.npcName = npcName;
+            }
+            
+            // 发送消息
+            function sendMessage(npcId, npcName) {
+                const messageContent = document.getElementById('message-content').value.trim();
+                if (!messageContent) return;
+                
+                // 添加到日志
+                const logEntry = {
+                    id: Date.now(),
+                    type: 'message',
+                    time: new Date(gameState.virtualTime),
+                    title: `给 ${npcName} 发送了私信`,
+                    content: `"${messageContent}" - 就像轻小说里的情节一样，通过文字传达心意~`,
+                    image: `https://picsum.photos/id/${60 + Math.floor(Math.random() * 5)}/300/200`,
+                    npcId: npcId,
+                    npcName: npcName
+                };
+                
+                gameState.log.unshift(logEntry);
+                updateLogPanel();
+                updatePlayerInfo();
+                
+                // 关闭消息窗口
+                document.getElementById('message-window').classList.add('hidden');
+                
+                // 显示通知
+                document.getElementById('log-notification').classList.remove('hidden');
+            }
+            
+            // 更新虚拟时间
+            function updateVirtualTime(deltaTime) {
+                // 计算应该增加的毫秒数 (现实时间 * 时间倍数)
+                const millisecondsToAdd = deltaTime * 1000 * gameState.timeMultiplier;
+                gameState.virtualTime.setTime(gameState.virtualTime.getTime() + millisecondsToAdd);
+                
+                // 更新UI
+                const timeStr = gameState.virtualTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                document.getElementById('virtual-time').textContent = timeStr;
+            }
+            
+            // 初始化事件监听器
+            function initEventListeners() {
+                // 地图点击 - 设置目的地
+                document.getElementById('map-container').addEventListener('click', (e) => {
+                    if (gameState.moveMode !== 'direct' || !gameState.player || gameState.isChatting) return;
+                    
+                    // 获取点击位置相对于地图的坐标
+                    const rect = document.getElementById('map').getBoundingClientRect();
+                    const x = e.clientX - rect.left;
+                    const y = e.clientY - rect.top;
+                    
+                    // 找到最近的道路点
+                    const gridSize = gameState.gridSize;
+                    let closestX, closestY;
+                    
+                    // 检查是否更靠近水平线或垂直线
+                    if (x % gridSize < gridSize / 2) {
+                        closestX = Math.floor(x / gridSize) * gridSize;
+                    } else {
+                        closestX = Math.ceil(x / gridSize) * gridSize;
+                    }
+                    
+                    if (y % gridSize < gridSize / 2) {
+                        closestY = Math.floor(y / gridSize) * gridSize;
+                    } else {
+                        closestY = Math.ceil(y / gridSize) * gridSize;
+                    }
+                    
+                    // 确保在地图范围内
+                    closestX = Math.max(0, Math.min(closestX, gameState.mapSize));
+                    closestY = Math.max(0, Math.min(closestY, gameState.mapSize));
+                    
+                    // 设置目的地
+                    gameState.player.destination = { x: closestX, y: closestY };
+                });
+                
+                // 移动模式切换
+                document.getElementById('move-mode-toggle').addEventListener('click', () => {
+                    gameState.moveMode = gameState.moveMode === 'random' ? 'direct' : 'random';
+                    const btn = document.getElementById('move-mode-toggle');
+                    
+                    if (gameState.moveMode === 'random') {
+                        btn.innerHTML = '<i class="fa fa-random mr-1"></i>随机移动';
+                    } else {
+                        btn.innerHTML = '<i class="fa fa-map-marker mr-1"></i>指定移动';
+                    }
+                });
+                
+                // 时间控制
+                document.getElementById('time-control').addEventListener('input', (e) => {
+                    gameState.timeMultiplier = parseInt(e.target.value);
+                    document.getElementById('time-multiplier').textContent = `${gameState.timeMultiplier}x`;
+                    document.getElementById('time-control-btn').querySelector('span').textContent = `时间: ${gameState.timeMultiplier}x`;
+                });
+                
+                // 时间控制按钮
+                document.getElementById('time-control-btn').addEventListener('click', () => {
+                    // 切换常用时间倍数
+                    const multipliers = [1, 60, 120, 180, 240, 300];
+                    const currentIndex = multipliers.indexOf(gameState.timeMultiplier);
+                    const nextIndex = (currentIndex + 1) % multipliers.length;
+                    
+                    gameState.timeMultiplier = multipliers[nextIndex];
+                    document.getElementById('time-control').value = gameState.timeMultiplier;
+                    document.getElementById('time-multiplier').textContent = `${gameState.timeMultiplier}x`;
+                    document.getElementById('time-control-btn').querySelector('span').textContent = `时间: ${gameState.timeMultiplier}x`;
+                });
+                
+                // 日志按钮
+                document.getElementById('log-btn').addEventListener('click', () => {
+                    document.getElementById('log-panel').classList.remove('hidden');
+                    document.getElementById('log-notification').classList.add('hidden');
+                });
+                
+                // 关闭日志
+                document.getElementById('close-log').addEventListener('click', () => {
+                    document.getElementById('log-panel').classList.add('hidden');
+                });
+                
+                // 清空日志
+                document.getElementById('clear-log').addEventListener('click', () => {
+                    if (confirm('确定要清空所有日志吗？此操作不可恢复。')) {
+                        gameState.log = [];
+                        updateLogPanel();
+                        updatePlayerInfo();
+                    }
+                });
+                
+                // 消息窗口
+                document.getElementById('close-message').addEventListener('click', () => {
+                    document.getElementById('message-window').classList.add('hidden');
+                });
+                
+                document.getElementById('cancel-message').addEventListener('click', () => {
+                    document.getElementById('message-window').classList.add('hidden');
+                });
+                
+                document.getElementById('send-message').addEventListener('click', (e) => {
+                    const npcId = e.target.dataset.npcId;
+                    const npcName = e.target.dataset.npcName;
+                    sendMessage(npcId, npcName);
+                });
+                
+                // 窗口滚动时改变导航栏样式
+                window.addEventListener('scroll', () => {
+                    const header = document.querySelector('header');
+                    if (window.scrollY > 10) {
+                        header.classList.add('shadow');
+                    } else {
+                        header.classList.remove('shadow');
+                    }
+                });
+            }
+            
+            // 游戏主循环
+            function startGameLoop() {
+                let lastTime = performance.now();
+                
+                function gameLoop(currentTime) {
+                    // 计算时间差 (秒)
+                    const deltaTime = (currentTime - lastTime) / 1000;
+                    lastTime = currentTime;
+                    
+                    // 更新虚拟时间
+                    updateVirtualTime(deltaTime);
+                    
+                    // 如果正在聊天，不移动
+                    if (!gameState.isChatting) {
+                        // 移动玩家 (如果是随机模式)
+                        if (gameState.moveMode === 'random' || gameState.player.destination) {
+                            moveCharacter(gameState.player, deltaTime);
+                        }
+                        
+                        // 移动NPC
+                        gameState.npcs.forEach(npc => {
+                            moveCharacter(npc, deltaTime);
+                        });
+                        
+                        // 检查相遇
+                        checkEncounters();
+                    }
+                    
+                    // 更新玩家位置信息
+                    updatePlayerLocation();
+                    
+                    requestAnimationFrame(gameLoop);
+                }
+                
+                requestAnimationFrame(gameLoop);
+            }
+        });
+    </script>
+</body>
+</html>
